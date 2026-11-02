@@ -12,6 +12,7 @@ if str(SRC_DIR) not in sys.path:
 
 from rag_pipeline import (
     load_knowledge_base,
+    process_pdf,
     generate_rag_answer,
     generate_cross_document_answer,
     detect_knowledge_gap,
@@ -35,6 +36,21 @@ st.set_page_config(
 # Initialize Session State
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
+
+
+def init_default_knowledge_base():
+    """Ensure sample knowledge base is populated on first launch."""
+    try:
+        sample_file = ROOT_DIR / "data" / "uploads" / "sample.pdf"
+        if not sample_file.exists():
+            from create_sample_pdf import main as create_samples
+            create_samples()
+        idx, docs = process_pdf(str(sample_file))
+        return idx, docs
+    except Exception as e:
+        return None, []
+
+
 if "index" not in st.session_state or "documents" not in st.session_state:
     try:
         if Path(INDEX_PATH).exists() and Path(METADATA_PATH).exists():
@@ -42,11 +58,13 @@ if "index" not in st.session_state or "documents" not in st.session_state:
             st.session_state.index = idx
             st.session_state.documents = docs
         else:
-            st.session_state.index = None
-            st.session_state.documents = []
+            idx, docs = init_default_knowledge_base()
+            st.session_state.index = idx
+            st.session_state.documents = docs
     except Exception as e:
-        st.session_state.index = None
-        st.session_state.documents = []
+        idx, docs = init_default_knowledge_base()
+        st.session_state.index = idx
+        st.session_state.documents = docs
 
 
 def refresh_knowledge_base():
@@ -57,8 +75,9 @@ def refresh_knowledge_base():
             st.session_state.index = idx
             st.session_state.documents = docs
         else:
-            st.session_state.index = None
-            st.session_state.documents = []
+            idx, docs = init_default_knowledge_base()
+            st.session_state.index = idx
+            st.session_state.documents = docs
     except Exception as e:
         st.error(f"Error loading vector store: {e}")
 
@@ -92,11 +111,9 @@ with st.sidebar:
         help="Upload standard text-based PDF documents."
     )
 
-    with st.expander("⚙️ Chunking Settings"):
-        chunk_size = st.slider("Chunk Size (characters)", 200, 2000, 1000, 100)
-        chunk_overlap = st.slider("Chunk Overlap (characters)", 0, 500, 200, 50)
-
+    # Place Ingest button DIRECTLY below file uploader for clear UX
     if uploaded_files:
+        st.info(f"📁 {len(uploaded_files)} file(s) uploaded. Click below to index:")
         if st.button("📥 Ingest & Index Documents", type="primary", use_container_width=True):
             upload_dir = ROOT_DIR / "data" / "uploads"
             upload_dir.mkdir(parents=True, exist_ok=True)
@@ -113,8 +130,8 @@ with st.sidebar:
                 try:
                     result = ingest_pdf(
                         file_path,
-                        chunk_size=chunk_size,
-                        overlap=chunk_overlap
+                        chunk_size=1000,
+                        overlap=200
                     )
                     if result["status"] == "already_exists":
                         st.info(result["message"])
@@ -125,9 +142,13 @@ with st.sidebar:
 
                 progress_bar.progress((i + 1) / len(uploaded_files))
 
-            status_text.text("Ingestion completed!")
+            status_text.text("Ingestion completed successfully!")
             refresh_knowledge_base()
             st.rerun()
+
+    with st.expander("⚙️ Advanced Chunking Settings"):
+        chunk_size = st.slider("Chunk Size (characters)", 200, 2000, 1000, 100)
+        chunk_overlap = st.slider("Chunk Overlap (characters)", 0, 500, 200, 50)
 
     st.divider()
 
@@ -140,14 +161,14 @@ with st.sidebar:
     col1.metric("Indexed PDFs", unique_docs)
     col2.metric("Total Chunks", num_chunks)
 
-    st.caption("Embedding Model: `all-MiniLM-L6-v2` (384-dim)")
+    st.caption("Embedding Engine: FastEmbed ONNX (`all-MiniLM-L6-v2`)")
     st.caption("Vector Index: FAISS `IndexFlatIP` (Cosine Sim)")
 
     if st.button("🗑️ Reset Knowledge Base", use_container_width=True):
         clear_knowledge_base()
         refresh_knowledge_base()
         st.session_state.chat_history = []
-        st.warning("Knowledge base reset. Please upload documents.")
+        st.warning("Knowledge base reset. Default knowledge reloaded.")
         st.rerun()
 
 
@@ -170,6 +191,14 @@ tab_chat, tab_discovery, tab_explorer, tab_eval = st.tabs([
 # TAB 1: Document Q&A (Conversational RAG)
 # ------------------------------------------
 with tab_chat:
+    # Helpful reminder banner if user uploaded a file but forgot to click ingest
+    if uploaded_files:
+        uploaded_names = {f.name.lower() for f in uploaded_files}
+        indexed_names = {d["source"].lower() for d in st.session_state.documents} if st.session_state.documents else set()
+        unindexed = uploaded_names - indexed_names
+        if unindexed:
+            st.warning(f"⚠️ You have {len(unindexed)} unindexed file(s) in the sidebar. Please click **'📥 Ingest & Index Documents'** to include them in search!")
+
     col_retrieval, col_search = st.columns([1, 2])
     with col_retrieval:
         top_k = st.slider("Top-K Chunks to Retrieve", min_value=1, max_value=8, value=3)
@@ -194,7 +223,9 @@ with tab_chat:
 
     if submit_btn and user_query:
         if not st.session_state.index or not st.session_state.documents:
-            st.error("Vector store is empty! Please upload and index PDF documents from the sidebar first.")
+            st.error("Vector store is empty! Initializing default knowledge base...")
+            refresh_knowledge_base()
+            st.rerun()
         elif not os.getenv("GEMINI_API_KEY"):
             st.error("Gemini API Key is missing! Enter it in the sidebar or set GEMINI_API_KEY in .env.")
         else:

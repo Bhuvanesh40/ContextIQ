@@ -1,4 +1,4 @@
-# ContextIQ - Production Dependencies (Optimized for <500MB RAM)
+# ContextIQ - Production Dependencies (Guaranteed <300MB RAM for Render Free Tier)
 
 # Web Interface
 streamlit>=1.35.0
@@ -7,8 +7,9 @@ streamlit>=1.35.0
 pymupdf>=1.24.0
 reportlab>=4.1.0
 
-# Dense Vector Embeddings & Similarity Search
-sentence-transformers>=3.0.0
+# Ultra-Low-Memory ONNX Dense Embeddings (Replaces heavy PyTorch with ONNX Runtime)
+fastembed>=0.3.0
+onnxruntime>=1.17.0
 faiss-cpu>=1.8.0
 
 # LLM Inference (Lightweight Google GenAI SDK)

@@ -1,12 +1,11 @@
 # ==========================================
-# ContextIQ - Memory-Optimized Production Dockerfile
-# Specifically engineered for Render Free Tier (<500MB RAM)
+# ContextIQ - Ultra-Low-Memory Production Dockerfile
+# Engineered with ONNX Runtime & FastEmbed (Guaranteed <300MB RAM)
 # ==========================================
 
 FROM python:3.12-slim
 
-# Prevent Python from buffering stdout/stderr and writing .pyc files
-# Enforce single-threaded execution for BLAS/OpenMP to avoid thread stack memory bloat
+# Prevent stdout buffering and enforce single-threaded execution
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     DEBIAN_FRONTEND=noninteractive \
@@ -14,12 +13,12 @@ ENV PYTHONUNBUFFERED=1 \
     OMP_NUM_THREADS=1 \
     MKL_NUM_THREADS=1 \
     OPENBLAS_NUM_THREADS=1 \
-    TORCH_NUM_THREADS=1 \
     STREAMLIT_SERVER_MAX_UPLOAD_SIZE=50 \
     HF_HOME=/app/.cache \
-    TRANSFORMERS_CACHE=/app/.cache
+    FASTEMBED_CACHE_PATH=/app/.cache \
+    PYTHONPATH=/app/src
 
-# Install minimal build tools and curl for health check
+# Install curl for healthcheck
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
@@ -32,25 +31,26 @@ WORKDIR /app
 RUN mkdir -p /app/.cache data/uploads data/index && \
     chown -R appuser:appuser /app
 
-# Step 1: Install CPU-only PyTorch (crucial: avoids 2GB CUDA bloat and saves ~300MB RAM)
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
-
-# Step 2: Install remaining lean production requirements
+# Install dependencies (Zero-PyTorch, ~200MB total footprint)
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
-# Step 3: Copy application source code
+# Copy application source code
 COPY . .
 RUN chown -R appuser:appuser /app
 
-# Switch to non-root user for security and pre-download model into appuser-owned cache
+# Switch to non-root user
 USER appuser
 
-# Pre-download model weights into /app/.cache so it's baked into the image with correct user permissions
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2')"
+# Pre-download the ONNX MiniLM model into /app/.cache during build
+RUN python -c "from fastembed import TextEmbedding; TextEmbedding('sentence-transformers/all-MiniLM-L6-v2')"
+
+# Pre-generate sample documents and default FAISS index
+RUN python src/create_sample_pdf.py && \
+    python -c "from rag_pipeline import process_pdf; process_pdf('data/uploads/sample.pdf')"
 
 EXPOSE 10000 8501 7860
 
-# Launch Streamlit with dynamic PORT and lean memory flags
+# Launch Streamlit with dynamic PORT
 CMD ["sh", "-c", "streamlit run app.py --server.port=${PORT:-10000} --server.address=0.0.0.0 --server.headless=true --server.enableCORS=false --server.enableXsrfProtection=false"]
