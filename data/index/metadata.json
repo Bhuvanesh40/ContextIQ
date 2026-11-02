@@ -1,0 +1,20 @@
+[
+    {
+        "chunk_id": "chunk_0001",
+        "source": "sample.pdf",
+        "page_number": 1,
+        "chunk_text": "ContextIQ - RAG Knowledge Document\n\nRetrieval-Augmented Generation (RAG)\n\nRAG combines information retrieval with large language models.\n\nIt retrieves relevant information from external knowledge sources.\n\nThe LLM uses retrieved context to generate grounded answers.\n\nEmbeddings convert text into numerical vectors.\n\nFAISS is a library for efficient vector similarity search.\n\nText chunking divides large documents into smaller sections."
+    },
+    {
+        "chunk_id": "chunk_0002",
+        "source": "llm_guide.pdf",
+        "page_number": 1,
+        "chunk_text": "Large Language Models Guide\n\nLarge Language Models Overview\n\nLarge language models generate natural language responses.\n\nTransformers are the foundational architecture for modern LLMs.\n\nGrounding LLMs with external context prevents hallucination."
+    },
+    {
+        "chunk_id": "chunk_0003",
+        "source": "python_guide.pdf",
+        "page_number": 1,
+        "chunk_text": "Python Programming Guide\n\nPython Overview\n\nPython is a popular programming language.\n\nIt emphasizes readability and rapid development.\n\nPython is widely used in Machine Learning, AI Engineering, and Web Development."
+    }
+]

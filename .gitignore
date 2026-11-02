@@ -33,7 +33,9 @@ ENV/
 
 # Local Data, Indexes & Uploads
 data/index/faiss.index
-data/index/*.json
+data/index/*.tmp
+!data/index/evaluation_report.json
+!data/index/ragas_report.json
 data/uploads/*
 !data/uploads/.gitkeep
 

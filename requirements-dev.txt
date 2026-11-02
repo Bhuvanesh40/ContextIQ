@@ -1,0 +1,7 @@
+# ContextIQ - Development & Offline Benchmark Dependencies
+-r requirements.txt
+
+# Offline RAGAS Generation Evaluation
+ragas>=0.2.0
+langchain-google-genai>=2.0.0
+langchain-community<0.4.0

@@ -1,0 +1,38 @@
+[
+    {
+        "chunk_size": 300,
+        "overlap": 50,
+        "total_chunks": 3,
+        "precision": 0.16666666666666666,
+        "recall": 0.5,
+        "mrr": 0.5,
+        "hit_rate": 0.5
+    },
+    {
+        "chunk_size": 500,
+        "overlap": 50,
+        "total_chunks": 2,
+        "precision": 0.25,
+        "recall": 0.5,
+        "mrr": 0.375,
+        "hit_rate": 0.5
+    },
+    {
+        "chunk_size": 500,
+        "overlap": 100,
+        "total_chunks": 2,
+        "precision": 0.25,
+        "recall": 0.5,
+        "mrr": 0.375,
+        "hit_rate": 0.5
+    },
+    {
+        "chunk_size": 800,
+        "overlap": 100,
+        "total_chunks": 1,
+        "precision": 0.25,
+        "recall": 0.25,
+        "mrr": 0.25,
+        "hit_rate": 0.25
+    }
+]

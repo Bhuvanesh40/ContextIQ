@@ -1,0 +1,49 @@
+{
+    "summary": {
+        "faithfulness": 0.6667,
+        "answer_relevancy": 0.8359,
+        "context_precision": 1.0,
+        "context_recall": 1.0,
+        "answer_correctness": 0.8242
+    },
+    "queries_evaluated": 4,
+    "records": [
+        {
+            "question": "What is Retrieval-Augmented Generation?",
+            "ground_truth": "Retrieval-Augmented Generation (RAG) is a technique that combines information retrieval with large language models to generate grounded responses.",
+            "generated_answer": "Retrieval-Augmented Generation (RAG) is a technique that combines information retrieval with large language models (Source: sample.pdf, Page: 1). Large language models are used to generate natural language responses (Source: llm_guide.pdf, Page: 4).",
+            "contexts": [
+                "RAG combines information retrieval with large language models.",
+                "Large language models generate natural language responses."
+            ]
+        },
+        {
+            "question": "What are embeddings?",
+            "ground_truth": "Embeddings are numerical vector representations of text that capture semantic meaning.",
+            "generated_answer": "Based on the provided documents, embeddings are used to convert text into numerical vectors (Source: sample.pdf, Page: 2).",
+            "contexts": [
+                "Embeddings convert text into numerical vectors.",
+                "Large language models generate natural language responses.",
+                "RAG combines information retrieval with large language models."
+            ]
+        },
+        {
+            "question": "What is Python?",
+            "ground_truth": "Python is a popular programming language.",
+            "generated_answer": "Based on the provided document, Python is a popular programming language (Source: python_guide.pdf, Page: 5).",
+            "contexts": [
+                "Python is a popular programming language."
+            ]
+        },
+        {
+            "question": "What do large language models generate?",
+            "ground_truth": "Large language models generate natural language responses.",
+            "generated_answer": "Based on the provided documents, large language models generate natural language responses (Source: llm_guide.pdf, Page: 4).",
+            "contexts": [
+                "Large language models generate natural language responses.",
+                "RAG combines information retrieval with large language models.",
+                "Embeddings convert text into numerical vectors."
+            ]
+        }
+    ]
+}

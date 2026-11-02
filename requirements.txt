@@ -1,25 +1,20 @@
-# ContextIQ - Core Dependencies
+# ContextIQ - Production Dependencies (Optimized for <500MB RAM)
 
 # Web Interface
 streamlit>=1.35.0
 
-# Document Ingestion & Extraction
+# PDF Extraction
 pymupdf>=1.24.0
 reportlab>=4.1.0
 
-# Vector Embeddings & Indexing
+# Dense Vector Embeddings & Similarity Search
 sentence-transformers>=3.0.0
 faiss-cpu>=1.8.0
 
-# LLM API & Client
+# LLM Inference (Lightweight Google GenAI SDK)
 google-genai>=1.0.0
-langchain-google-genai>=2.0.0
-langchain-community<0.4.0
 
-# RAG Evaluation Framework
-ragas>=0.2.0
-
-# Core Utilities
+# Utilities
 python-dotenv>=1.0.0
 numpy>=1.26.0
 pandas>=2.2.0
