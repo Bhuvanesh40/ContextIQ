@@ -1,0 +1,25 @@
+# ContextIQ - Core Dependencies
+
+# Web Interface
+streamlit>=1.35.0
+
+# Document Ingestion & Extraction
+pymupdf>=1.24.0
+reportlab>=4.1.0
+
+# Vector Embeddings & Indexing
+sentence-transformers>=3.0.0
+faiss-cpu>=1.8.0
+
+# LLM API & Client
+google-genai>=1.0.0
+langchain-google-genai>=2.0.0
+langchain-community<0.4.0
+
+# RAG Evaluation Framework
+ragas>=0.2.0
+
+# Core Utilities
+python-dotenv>=1.0.0
+numpy>=1.26.0
+pandas>=2.2.0

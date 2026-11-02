@@ -1,0 +1,54 @@
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual Environments
+venv/
+env/
+ENV/
+.venv/
+
+# Environment Variables & Secrets (CRITICAL: NEVER COMMIT)
+.env
+.env*.local
+*.pem
+*.key
+
+# Local Data, Indexes & Uploads
+data/index/faiss.index
+data/index/*.json
+data/uploads/*
+!data/uploads/.gitkeep
+
+# IDE & Editor Settings
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS Artifacts
+.DS_Store
+Thumbs.db
+
+# Logs & Caches
+*.log
+.pytest_cache/
+.coverage
+htmlcov/
