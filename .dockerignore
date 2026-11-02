@@ -1,0 +1,37 @@
+# Docker Build Ignore Rules
+
+# Virtual Environments
+venv/
+env/
+.venv/
+ENV/
+
+# Secrets & Environment Variables (CRITICAL)
+.env
+.env*.local
+*.pem
+*.key
+
+# Git Version Control
+.git/
+.gitignore
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# Local Data & Indexes (Created dynamically at runtime)
+data/index/faiss.index
+data/index/*.json
+data/uploads/*
+!data/uploads/.gitkeep
+
+# IDE Settings & Operating System Files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.log

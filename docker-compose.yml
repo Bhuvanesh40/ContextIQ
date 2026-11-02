@@ -1,0 +1,14 @@
+services:
+  contextiq:
+    build: .
+    container_name: contextiq-app
+    ports:
+      - "7860:7860"
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - GEMINI_MODEL=gemini-3.5-flash-lite
+    volumes:
+      # Persistent local storage for FAISS vectors and uploaded documents
+      - ./data/index:/app/data/index
+      - ./data/uploads:/app/data/uploads
+    restart: unless-stopped
