@@ -105,9 +105,7 @@ with st.sidebar:
 
     # The key is read from the environment; the password field avoids displaying
     # it in plain text if the user supplies it interactively.
-    if os.getenv("GEMINI_API_KEY"):
-        st.success("Connected to Gemini API", icon="🔒")
-    else:
+    if not os.getenv("GEMINI_API_KEY"):
         st.warning("GEMINI_API_KEY missing from environment", icon="⚠️")
         user_key = st.text_input("Enter Gemini API Key", type="password", placeholder="AIzaSy...")
         if user_key:
@@ -167,11 +165,6 @@ with st.sidebar:
             refresh_knowledge_base()
             st.rerun()
 
-    with st.expander("⚙️ Advanced Chunking Settings"):
-        # Expose chunk boundaries as tunable settings for subsequent uploads.
-        chunk_size = st.slider("Chunk Size (characters)", 200, 2000, 1000, 100)
-        chunk_overlap = st.slider("Chunk Overlap (characters)", 0, 500, 200, 50)
-
     st.divider()
 
     # Summarize the currently loaded metadata, not files that have yet to be indexed.
@@ -195,16 +188,15 @@ with st.sidebar:
         st.rerun()
 
 
-# The main workspace separates Q&A, discovery, browsing, and evaluation tasks.
+# The main workspace separates Q&A, discovery, and evaluation tasks.
 st.title("ContextIQ — Document Intelligence & RAG")
 st.markdown(
-    "Ask questions grounded strictly in your indexed documents with **source citations, page numbers, and similarity scores**."
+    "Ask questions grounded strictly in your indexed documents with **source citations and page numbers**."
 )
 
-tab_chat, tab_discovery, tab_explorer, tab_eval = st.tabs([
+tab_chat, tab_discovery, tab_eval = st.tabs([
     "💬 Document Q&A",
     "🔍 Knowledge Discovery",
-    "📑 Document Explorer",
     "📊 Evaluation Dashboard"
 ])
 
@@ -271,21 +263,9 @@ with tab_chat:
                     st.session_state.chat_history.append({"role": "user", "content": user_query})
                     st.session_state.chat_history.append({"role": "assistant", "content": result["answer"]})
 
-                    # Present the generated response separately from its evidence.
+                    # Present the generated response with inline source citations.
                     st.markdown("### 🤖 Answer")
                     st.markdown(result["answer"])
-
-                    # Show retrieval metadata and quoted chunks for answer inspection.
-                    st.markdown("### 📚 Grounding Sources")
-                    if not result["sources"]:
-                        st.info("No sources met the similarity threshold.")
-                    else:
-                        for idx, src in enumerate(result["sources"], start=1):
-                            with st.expander(
-                                f"Source {idx}: {src['source']} (Page {src['page_number']}) — Similarity: {src['similarity_score']:.4f}"
-                            ):
-                                st.markdown(f"**Chunk ID:** `{src['chunk_id']}`")
-                                st.markdown(f"**Extracted Text:**\n\n>{src['chunk_text']}")
 
                 except Exception as ex:
                     st.error(f"Generation error: {ex}")
@@ -375,44 +355,7 @@ with tab_discovery:
 
 
 # ------------------------------------------
-# TAB 3: Document Explorer
-# ------------------------------------------
-with tab_explorer:
-    # Provide a browse-only view of indexed source and chunk metadata.
-    st.subheader("Indexed Document & Chunk Inspector")
-
-    if not st.session_state.documents:
-        st.info("No documents are currently indexed.")
-    else:
-        doc_summary = {}
-        # Count chunks per source so the UI can summarize the indexed corpus.
-        for d in st.session_state.documents:
-            src = d["source"]
-            doc_summary[src] = doc_summary.get(src, 0) + 1
-
-        st.markdown("#### Summary of Indexed Files")
-        cols = st.columns(min(len(doc_summary), 4) or 1)
-        for i, (name, count) in enumerate(doc_summary.items()):
-            cols[i % len(cols)].metric(name, f"{count} chunks")
-
-        st.divider()
-        st.markdown("#### Search & Inspect Chunks")
-        filter_doc = st.selectbox("Filter Chunks by Document", ["All"] + list(doc_summary.keys()))
-
-        displayed_chunks = [
-            # Apply the optional source filter without changing the saved index.
-            d for d in st.session_state.documents
-            if filter_doc == "All" or d["source"] == filter_doc
-        ]
-
-        st.caption(f"Showing {len(displayed_chunks)} chunks")
-        for chunk in displayed_chunks[:20]:
-            with st.expander(f"`{chunk['chunk_id']}` — {chunk['source']} (Page {chunk['page_number']})"):
-                st.text(chunk["chunk_text"])
-
-
-# ------------------------------------------
-# TAB 4: Evaluation Dashboard
+# TAB 3: Evaluation Dashboard
 # ------------------------------------------
 with tab_eval:
     # Read or regenerate retrieval metrics produced from the labeled evaluation set.
