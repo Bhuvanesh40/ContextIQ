@@ -11,12 +11,13 @@ def retrieve_documents(
     source_filter=None,
     page_filter=None
 ):
-    # Validate metadata filters
+    # Find relevant chunks and return their text plus citation metadata.
+    # Reject page numbers that cannot identify a real one-based PDF page.
     if page_filter is not None and page_filter <= 0:
         raise ValueError("Page number must be greater than zero")
 
-    # If filters are provided, retrieve all candidates so
-    # filtering does not accidentally remove the best matches.
+    # Search every indexed vector when filtering by metadata; otherwise a
+    # source/page filter could discard the global top-k and miss valid matches.
     search_k = index.ntotal if (
         source_filter is not None or page_filter is not None
     ) else top_k
@@ -27,18 +28,23 @@ def retrieve_documents(
         search_k
     )
 
+    # Convert FAISS's vector positions into document records, applying threshold
+    # and metadata filters before collecting the final top_k results.
     retrieved_documents = []
 
     for score, index_position in zip(scores, indices):
 
+        # FAISS uses -1 when fewer than k neighbors are available.
         if index_position < 0:
             continue
 
         score = float(score)
 
+        # Lower-scoring matches are considered too weak to use as evidence.
         if score < min_similarity:
             continue
 
+        # Vector order and metadata order are kept aligned by ingestion/persistence.
         document = documents[int(index_position)]
 
         # Filter by source PDF
@@ -55,6 +61,7 @@ def retrieve_documents(
         ):
             continue
 
+        # Return only the fields needed by prompts, citations, and the UI.
         retrieved_documents.append({
             "chunk_id": document["chunk_id"],
             "source": document["source"],

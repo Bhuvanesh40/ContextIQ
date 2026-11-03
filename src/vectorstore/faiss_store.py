@@ -4,25 +4,25 @@ import numpy as np
 
 
 def create_faiss_index(embeddings):
-
-    # Step 1: Convert embeddings into float32
+    # Build an exact inner-product index for normalized cosine search.
+    # FAISS expects contiguous numeric arrays in float32 for this index type.
     embeddings = np.asarray(
         embeddings,
         dtype=np.float32
     )
 
-    # Step 2: Validate dimensions
+    # Require at least one vector and a 2D (count, dimension) input matrix.
     if embeddings.ndim != 2 or len(embeddings) == 0:
         raise ValueError("Embeddings must be a non-empty 2D array")
 
-    # Step 3: Normalize vectors
+    # Normalize a copy so inner product is equivalent to cosine similarity.
     embeddings = embeddings.copy()
     faiss.normalize_L2(embeddings)
 
     # Step 4: Get embedding dimensions
     dimension = embeddings.shape[1]
 
-    # Step 5: Create FAISS index
+    # IndexFlatIP performs exact inner-product search without training.
     index = faiss.IndexFlatIP(dimension)
 
     # Step 6: Add embeddings
@@ -32,24 +32,25 @@ def create_faiss_index(embeddings):
 
 
 def search_faiss(index, query_embedding, top_k=3):
-
-    # Convert query into float32
+    # Return scores and vector positions for the query's nearest neighbors.
+    # FAISS searches a matrix, so reshape the single query into one row.
     query_embedding = np.asarray(
         query_embedding,
         dtype=np.float32
     ).reshape(1, -1)
 
+    # Prevent comparisons between vectors from different embedding spaces.
     if query_embedding.shape[1] != index.d:
         raise ValueError("Query embedding dimension mismatch")
 
     if top_k <= 0:
         raise ValueError("top_k must be positive")
 
-    # Normalize query
+    # Normalize the query exactly as the indexed vectors were normalized.
     query_embedding = query_embedding.copy()
     faiss.normalize_L2(query_embedding)
 
-    # Search the index
+    # Asking for more vectors than the index contains is unnecessary.
     k = min(top_k, index.ntotal)
 
     scores, indices = index.search(
@@ -61,7 +62,7 @@ def search_faiss(index, query_embedding, top_k=3):
 
 
 def create_l2_index(embeddings):
-
+    # Create an exact Euclidean-distance index for vector experiments.
     embeddings = np.asarray(
         embeddings,
         dtype=np.float32
@@ -72,7 +73,7 @@ def create_l2_index(embeddings):
 
     dimension = embeddings.shape[1]
 
-    # Create exact L2 index
+    # IndexFlatL2 compares every stored vector and returns squared L2 distances.
     index = faiss.IndexFlatL2(dimension)
 
     # Add document vectors
@@ -82,7 +83,7 @@ def create_l2_index(embeddings):
 
 
 def create_ip_index(embeddings):
-
+    # Create a normalized exact inner-product index.
     embeddings = np.asarray(
         embeddings,
         dtype=np.float32
@@ -108,7 +109,7 @@ def create_ip_index(embeddings):
     return index
 
 def create_ivf_index(embeddings, nlist=4):
-
+    # Create an inverted-file index that searches selected vector clusters.
     # Step 1: Convert embeddings to float32
     embeddings = np.asarray(
         embeddings,
@@ -128,10 +129,10 @@ def create_ivf_index(embeddings, nlist=4):
     # Step 3: Get vector dimensions
     dimension = embeddings.shape[1]
 
-    # Step 4: Create a quantizer
+    # The quantizer assigns vectors to coarse clusters using exact inner product.
     quantizer = faiss.IndexFlatIP(dimension)
 
-    # Step 5: Create IVF index
+    # The IVF index stores vectors in nlist partitions for faster approximate search.
     index = faiss.IndexIVFFlat(
         quantizer,
         dimension,
@@ -139,7 +140,7 @@ def create_ivf_index(embeddings, nlist=4):
         faiss.METRIC_INNER_PRODUCT
     )
 
-    # Step 6: Train the IVF index
+    # Training learns the cluster centroids needed to partition the vectors.
     index.train(embeddings)
 
     # Step 7: Add document vectors
@@ -153,7 +154,7 @@ def create_hnsw_index(
     ef_construction=200,
     ef_search=32
 ):
-
+    # Create a graph-based approximate nearest-neighbor index.
     # Step 1: Convert embeddings to float32
     embeddings = np.asarray(
         embeddings,
@@ -180,17 +181,17 @@ def create_hnsw_index(
     # Step 4: Get vector dimensions
     dimension = embeddings.shape[1]
 
-    # Step 5: Create HNSW index
+    # HNSW links neighboring vectors in a graph for efficient approximate search.
     index = faiss.IndexHNSWFlat(
         dimension,
         M,
         faiss.METRIC_INNER_PRODUCT
     )
 
-    # Step 6: Configure graph construction
+    # Construction effort controls graph quality and indexing cost.
     index.hnsw.efConstruction = ef_construction
 
-    # Step 7: Configure search
+    # Search effort controls the speed/recall trade-off at query time.
     index.hnsw.efSearch = ef_search
 
     # Step 8: Add vectors
@@ -204,7 +205,7 @@ def create_ivfpq_index(
     M=8,
     nbits=8
 ):
-
+    # Create an IVF index with product-quantized, compressed vectors.
     embeddings = np.asarray(
         embeddings,
         dtype=np.float32
@@ -233,10 +234,10 @@ def create_ivfpq_index(
     embeddings = embeddings.copy()
     faiss.normalize_L2(embeddings)
 
-    # Create IVF quantizer
+    # A full-precision quantizer chooses the coarse cluster for each vector.
     quantizer = faiss.IndexFlatIP(dimension)
 
-    # Create IVF-PQ index
+    # Product quantization compresses sub-vectors to reduce index memory use.
     index = faiss.IndexIVFPQ(
         quantizer,
         dimension,
@@ -246,10 +247,10 @@ def create_ivfpq_index(
         faiss.METRIC_INNER_PRODUCT
     )
 
-    # Train the index
+    # Both IVF clustering and PQ codebooks must be learned before adding data.
     index.train(embeddings)
 
-    # Add compressed vectors
+    # Add the training vectors after the index has learned its codebooks.
     index.add(embeddings)
 
     return index

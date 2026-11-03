@@ -3,6 +3,8 @@ ContextIQ Evaluation Ground-Truth Dataset.
 Contains test queries, corresponding ground-truth chunk IDs, and reference answers.
 """
 
+# Each record labels which stored chunk should answer a question and supplies
+# a reference response for offline retrieval and generation evaluation.
 evaluation_dataset = [
     {
         "question": "What is Retrieval-Augmented Generation?",

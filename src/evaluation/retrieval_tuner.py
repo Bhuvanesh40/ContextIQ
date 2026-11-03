@@ -24,6 +24,8 @@ def evaluate_configuration(
     top_k,
     threshold
 ):
+    # Average retrieval metrics for one top-k/threshold configuration.
+    # Accumulate one score per query before taking the dataset-wide mean.
     metrics = {
         "precision": [],
         "recall": [],
@@ -33,6 +35,7 @@ def evaluate_configuration(
 
     for item in dataset:
 
+        # Run the production query path with the parameters under test.
         results = search_context(
             index=index,
             documents=documents,
@@ -41,6 +44,7 @@ def evaluate_configuration(
             min_similarity=threshold
         )
 
+        # Convert results to IDs so they can be compared with the labeled IDs.
         retrieved_ids = [
             document["chunk_id"]
             for document in results
@@ -64,6 +68,7 @@ def evaluate_configuration(
             hit_rate_at_k(retrieved_ids, relevant_ids, top_k)
         )
 
+    # The caller validates that the dataset is non-empty before evaluating.
     count = len(dataset)
 
     return {
@@ -73,18 +78,20 @@ def evaluate_configuration(
 
 
 def main():
-
+    # Test combinations of retrieval settings and report the best balance.
+    # Reuse the current saved index and the fixed ground-truth query set.
     index, documents = load_knowledge_base()
 
     if not evaluation_dataset:
         raise ValueError("Evaluation dataset is empty")
 
-    # Experiment configurations
+    # Sweep result counts and similarity cutoffs to understand their trade-offs.
     top_k_values = [1, 3, 5]
     thresholds = [0.0, 0.10, 0.20, 0.30, 0.40]
 
     experiment_results = []
 
+    # Use the product of both lists to show progress through the full sweep.
     total_experiments = len(top_k_values) * len(thresholds)
     experiment_number = 0
 
@@ -121,14 +128,14 @@ def main():
             print("MRR:", round(scores["mrr"], 4))
             print("Hit Rate:", round(scores["hit_rate"], 4))
 
-    # Save all experiments
+    # Persist every tested configuration so results can be compared later.
     output_path = Path("data/index/retrieval_tuning_report.json")
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     with output_path.open("w", encoding="utf-8") as file:
         json.dump(experiment_results, file, indent=4)
 
-    # Rank configurations by a simple balanced score
+    # Select a simple unweighted average across the four retrieval metrics.
     best = max(
         experiment_results,
         key=lambda item: (

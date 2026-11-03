@@ -11,18 +11,18 @@ def save_vectorstore(
     index_path,
     metadata_path
 ):
-
-    # Step 1: Verify that vector and metadata counts match
+    # Persist the FAISS index and its parallel document metadata JSON.
+    # One metadata record per vector is required to map search hits to text.
     if index.ntotal != len(documents):
         raise ValueError(
             "FAISS vector count and metadata count do not match"
         )
 
-    # Step 2: Convert paths into Path objects
+    # Path objects provide consistent parent-directory and file operations.
     index_path = Path(index_path)
     metadata_path = Path(metadata_path)
 
-    # Step 3: Create parent folders if necessary
+    # Create missing output folders so first-time saves succeed.
     index_path.parent.mkdir(
         parents=True,
         exist_ok=True
@@ -33,13 +33,13 @@ def save_vectorstore(
         exist_ok=True
     )
 
-    # Step 4: Save the FAISS index
+    # FAISS uses its own binary format for the vector index.
     faiss.write_index(
         index,
         str(index_path)
     )
 
-    # Step 5: Save document metadata as JSON
+    # JSON keeps source names, page numbers, IDs, and chunk text human-readable.
     with metadata_path.open("w", encoding="utf-8") as file:
         json.dump(
             documents,
@@ -52,12 +52,12 @@ def save_vectorstore(
 
 
 def load_vectorstore(index_path, metadata_path):
-
-    # Step 1: Convert paths into Path objects
+    # Load a persisted index/metadata pair and verify their positional alignment.
+    # Normalize both paths before performing file checks.
     index_path = Path(index_path)
     metadata_path = Path(metadata_path)
 
-    # Step 2: Check whether files exist
+    # Report which persisted component is missing rather than returning partial state.
     if not index_path.exists():
         raise FileNotFoundError(
             f"FAISS index not found: {index_path}"
@@ -68,16 +68,16 @@ def load_vectorstore(index_path, metadata_path):
             f"Metadata file not found: {metadata_path}"
         )
 
-    # Step 3: Load FAISS index
+    # Reconstruct the binary vector index.
     index = faiss.read_index(
         str(index_path)
     )
 
-    # Step 4: Load metadata
+    # Load document records in the same order used when the index was built.
     with metadata_path.open("r", encoding="utf-8") as file:
         documents = json.load(file)
 
-    # Step 5: Verify alignment
+    # A count mismatch means vector positions can no longer identify metadata safely.
     if index.ntotal != len(documents):
         raise ValueError(
             "Loaded index and metadata counts do not match"

@@ -4,12 +4,16 @@ import json
 from pathlib import Path
 import streamlit as st
 
-# Ensure src/ is on the Python path
+# Resolve paths from this file so launching Streamlit from another working
+# directory still finds the project modules and data files.
 ROOT_DIR = Path(__file__).resolve().parent
 SRC_DIR = ROOT_DIR / "src"
 if str(SRC_DIR) not in sys.path:
+    # The project modules live under src/ and are imported as top-level packages.
     sys.path.insert(0, str(SRC_DIR))
 
+# Import the RAG operations used by the interface; their implementation stays
+# in src/ so the UI only coordinates inputs, outputs, and session state.
 from rag_pipeline import (
     load_knowledge_base,
     process_pdf,
@@ -25,7 +29,7 @@ from ingestion.knowledge_base_manager import (
     clear_knowledge_base
 )
 
-# Page configuration
+# Configure the browser page before creating any Streamlit elements.
 st.set_page_config(
     page_title="ContextIQ - Document Intelligence RAG",
     page_icon="🧠",
@@ -33,18 +37,22 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Initialize Session State
+# Streamlit reruns this file after user interaction, so session state keeps
+# conversation and index data alive between those reruns.
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = []
 
 
 def init_default_knowledge_base():
     """Ensure sample knowledge base is populated on first launch."""
+    # Create and index the bundled sample PDF when no index is available.
     try:
+        # Use a bundled sample so a fresh install has something searchable.
         sample_file = ROOT_DIR / "data" / "uploads" / "sample.pdf"
         if not sample_file.exists():
             from create_sample_pdf import main as create_samples
             create_samples()
+        # process_pdf extracts, chunks, embeds, indexes, and persists the sample.
         idx, docs = process_pdf(str(sample_file))
         return idx, docs
     except Exception as e:
@@ -53,15 +61,18 @@ def init_default_knowledge_base():
 
 if "index" not in st.session_state or "documents" not in st.session_state:
     try:
+        # Prefer the saved vector store to avoid rebuilding embeddings at startup.
         if Path(INDEX_PATH).exists() and Path(METADATA_PATH).exists():
             idx, docs = load_knowledge_base()
             st.session_state.index = idx
             st.session_state.documents = docs
         else:
+            # Bootstrap a usable store when this is the first application run.
             idx, docs = init_default_knowledge_base()
             st.session_state.index = idx
             st.session_state.documents = docs
     except Exception as e:
+        # Recover from an unreadable or incomplete saved store by rebuilding it.
         idx, docs = init_default_knowledge_base()
         st.session_state.index = idx
         st.session_state.documents = docs
@@ -69,12 +80,16 @@ if "index" not in st.session_state or "documents" not in st.session_state:
 
 def refresh_knowledge_base():
     """Reload FAISS index and metadata from disk."""
+    # Refresh the session's in-memory index and metadata from disk.
     try:
+        # Load the persisted pair together so vector positions continue to match
+        # their corresponding metadata records.
         if Path(INDEX_PATH).exists() and Path(METADATA_PATH).exists():
             idx, docs = load_knowledge_base()
             st.session_state.index = idx
             st.session_state.documents = docs
         else:
+            # Recreate the sample store if reset or first-run left no saved pair.
             idx, docs = init_default_knowledge_base()
             st.session_state.index = idx
             st.session_state.documents = docs
@@ -82,27 +97,27 @@ def refresh_knowledge_base():
         st.error(f"Error loading vector store: {e}")
 
 
-# ==========================================
-# SIDEBAR: Ingestion & System Controls
-# ==========================================
+# The sidebar contains system setup and document-management controls.
 with st.sidebar:
     st.title("🧠 ContextIQ")
     st.caption("Production Document-Based RAG System")
     st.divider()
 
-    # API & System Status (Securely loaded from environment)
+    # The key is read from the environment; the password field avoids displaying
+    # it in plain text if the user supplies it interactively.
     if os.getenv("GEMINI_API_KEY"):
         st.success("Connected to Gemini API", icon="🔒")
     else:
         st.warning("GEMINI_API_KEY missing from environment", icon="⚠️")
         user_key = st.text_input("Enter Gemini API Key", type="password", placeholder="AIzaSy...")
         if user_key:
+            # The Gemini client reads this variable when constructing a request.
             os.environ["GEMINI_API_KEY"] = user_key
             st.rerun()
 
     st.divider()
 
-    # Multi-PDF Ingestion Section
+    # Allow multiple PDFs to be selected before starting a batch ingestion.
     st.subheader("📄 Document Ingestion")
     uploaded_files = st.file_uploader(
         "Upload one or more PDF files",
@@ -111,10 +126,11 @@ with st.sidebar:
         help="Upload standard text-based PDF documents."
     )
 
-    # Place Ingest button DIRECTLY below file uploader for clear UX
     if uploaded_files:
         st.info(f"📁 {len(uploaded_files)} file(s) uploaded. Click below to index:")
         if st.button("📥 Ingest & Index Documents", type="primary", use_container_width=True):
+            # Uploaded content is saved under the project's upload directory,
+            # which is also where sample/evaluation documents are expected.
             upload_dir = ROOT_DIR / "data" / "uploads"
             upload_dir.mkdir(parents=True, exist_ok=True)
 
@@ -122,12 +138,15 @@ with st.sidebar:
             status_text = st.empty()
 
             for i, uploaded_file in enumerate(uploaded_files):
+                # Persist each upload before calling the ingestion pipeline,
+                # which accepts a filesystem path rather than Streamlit's object.
                 file_path = upload_dir / uploaded_file.name
                 with open(file_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
 
                 status_text.text(f"Processing: {uploaded_file.name}...")
                 try:
+                    # Append this PDF's chunks to the existing shared index.
                     result = ingest_pdf(
                         file_path,
                         chunk_size=1000,
@@ -140,19 +159,22 @@ with st.sidebar:
                 except Exception as ex:
                     st.error(f"Error indexing {uploaded_file.name}: {ex}")
 
+                # Report batch progress even if an individual document failed.
                 progress_bar.progress((i + 1) / len(uploaded_files))
 
+            # Synchronize the UI with the saved store after processing the batch.
             status_text.text("Ingestion completed successfully!")
             refresh_knowledge_base()
             st.rerun()
 
     with st.expander("⚙️ Advanced Chunking Settings"):
+        # Expose chunk boundaries as tunable settings for subsequent uploads.
         chunk_size = st.slider("Chunk Size (characters)", 200, 2000, 1000, 100)
         chunk_overlap = st.slider("Chunk Overlap (characters)", 0, 500, 200, 50)
 
     st.divider()
 
-    # Knowledge Base Metrics
+    # Summarize the currently loaded metadata, not files that have yet to be indexed.
     st.subheader("📊 Knowledge Base Stats")
     num_chunks = len(st.session_state.documents) if st.session_state.documents else 0
     unique_docs = len({d["source"] for d in st.session_state.documents}) if st.session_state.documents else 0
@@ -165,6 +187,7 @@ with st.sidebar:
     st.caption("Vector Index: FAISS `IndexFlatIP` (Cosine Sim)")
 
     if st.button("🗑️ Reset Knowledge Base", use_container_width=True):
+        # Remove persisted vectors/metadata, then restore the default sample corpus.
         clear_knowledge_base()
         refresh_knowledge_base()
         st.session_state.chat_history = []
@@ -172,9 +195,7 @@ with st.sidebar:
         st.rerun()
 
 
-# ==========================================
-# MAIN INTERFACE: Tabs
-# ==========================================
+# The main workspace separates Q&A, discovery, browsing, and evaluation tasks.
 st.title("ContextIQ — Document Intelligence & RAG")
 st.markdown(
     "Ask questions grounded strictly in your indexed documents with **source citations, page numbers, and similarity scores**."
@@ -191,7 +212,7 @@ tab_chat, tab_discovery, tab_explorer, tab_eval = st.tabs([
 # TAB 1: Document Q&A (Conversational RAG)
 # ------------------------------------------
 with tab_chat:
-    # Helpful reminder banner if user uploaded a file but forgot to click ingest
+    # Warn when selected uploads have not yet been included in the searchable index.
     if uploaded_files:
         uploaded_names = {f.name.lower() for f in uploaded_files}
         indexed_names = {d["source"].lower() for d in st.session_state.documents} if st.session_state.documents else set()
@@ -201,10 +222,11 @@ with tab_chat:
 
     col_retrieval, col_search = st.columns([1, 2])
     with col_retrieval:
+        # Retrieval controls limit result count and discard weak semantic matches.
         top_k = st.slider("Top-K Chunks to Retrieve", min_value=1, max_value=8, value=3)
         min_sim = st.slider("Min Similarity Threshold", min_value=0.0, max_value=1.0, value=0.20, step=0.05)
 
-        # Source filter
+        # Restrict retrieval to one indexed PDF when the user selects a source.
         sources_available = sorted({d["source"] for d in st.session_state.documents}) if st.session_state.documents else []
         selected_source = st.selectbox(
             "Filter by Document (Optional)",
@@ -222,6 +244,8 @@ with tab_chat:
         submit_btn = st.button("🔎 Search & Answer", type="primary")
 
     if submit_btn and user_query:
+        # Do not attempt retrieval or generation without both indexed content and
+        # a configured external language-model API key.
         if not st.session_state.index or not st.session_state.documents:
             st.error("Vector store is empty! Initializing default knowledge base...")
             refresh_knowledge_base()
@@ -231,6 +255,8 @@ with tab_chat:
         else:
             with st.spinner("Retrieving relevant passages and synthesizing answer..."):
                 try:
+                    # The pipeline rewrites follow-ups, retrieves evidence, and
+                    # asks Gemini to answer using that evidence.
                     result = generate_rag_answer(
                         index=st.session_state.index,
                         documents=st.session_state.documents,
@@ -241,15 +267,15 @@ with tab_chat:
                         source_filter=source_filter
                     )
 
-                    # Store in chat history
+                    # Save both turns so later questions can resolve references.
                     st.session_state.chat_history.append({"role": "user", "content": user_query})
                     st.session_state.chat_history.append({"role": "assistant", "content": result["answer"]})
 
-                    # Display Answer
+                    # Present the generated response separately from its evidence.
                     st.markdown("### 🤖 Answer")
                     st.markdown(result["answer"])
 
-                    # Display Sources
+                    # Show retrieval metadata and quoted chunks for answer inspection.
                     st.markdown("### 📚 Grounding Sources")
                     if not result["sources"]:
                         st.info("No sources met the similarity threshold.")
@@ -264,7 +290,7 @@ with tab_chat:
                 except Exception as ex:
                     st.error(f"Generation error: {ex}")
 
-    # Conversation History Display
+    # Replay prior turns after the latest interaction for conversational context.
     if st.session_state.chat_history:
         st.divider()
         st.markdown("#### 📜 Conversation History")
@@ -278,6 +304,7 @@ with tab_chat:
 # TAB 2: Knowledge Discovery
 # ------------------------------------------
 with tab_discovery:
+    # This tab offers collection-wide synthesis, coverage checks, and comparisons.
     st.subheader("Cross-Document Synthesis & Gap Detection")
     st.markdown("Leverage advanced multi-document capabilities across your indexed collection.")
 
@@ -294,6 +321,7 @@ with tab_discovery:
                 st.warning("Please index documents first.")
             else:
                 with st.spinner("Synthesizing across documents..."):
+                    # Search the complete index, then synthesize the retrieved evidence.
                     res = generate_cross_document_answer(
                         st.session_state.index,
                         st.session_state.documents,
@@ -308,6 +336,7 @@ with tab_discovery:
                 st.warning("Please index documents first.")
             else:
                 with st.spinner("Analyzing knowledge base coverage..."):
+                    # Report retrieved evidence volume and its originating PDFs.
                     gap = detect_knowledge_gap(
                         st.session_state.index,
                         st.session_state.documents,
@@ -332,6 +361,7 @@ with tab_discovery:
             if st.button("Compare Documents", type="primary"):
                 with st.spinner("Comparing documents..."):
                     try:
+                        # Retrieval is constrained independently to each chosen PDF.
                         comp = generate_document_comparison(
                             st.session_state.index,
                             st.session_state.documents,
@@ -348,12 +378,14 @@ with tab_discovery:
 # TAB 3: Document Explorer
 # ------------------------------------------
 with tab_explorer:
+    # Provide a browse-only view of indexed source and chunk metadata.
     st.subheader("Indexed Document & Chunk Inspector")
 
     if not st.session_state.documents:
         st.info("No documents are currently indexed.")
     else:
         doc_summary = {}
+        # Count chunks per source so the UI can summarize the indexed corpus.
         for d in st.session_state.documents:
             src = d["source"]
             doc_summary[src] = doc_summary.get(src, 0) + 1
@@ -368,6 +400,7 @@ with tab_explorer:
         filter_doc = st.selectbox("Filter Chunks by Document", ["All"] + list(doc_summary.keys()))
 
         displayed_chunks = [
+            # Apply the optional source filter without changing the saved index.
             d for d in st.session_state.documents
             if filter_doc == "All" or d["source"] == filter_doc
         ]
@@ -382,6 +415,7 @@ with tab_explorer:
 # TAB 4: Evaluation Dashboard
 # ------------------------------------------
 with tab_eval:
+    # Read or regenerate retrieval metrics produced from the labeled evaluation set.
     st.subheader("Retrieval Performance & RAG Metrics")
     st.markdown("Quantitative assessment of ContextIQ's dense retrieval engine across ground-truth evaluation queries.")
 
@@ -393,12 +427,14 @@ with tab_eval:
         else:
             with st.spinner("Running retrieval evaluation..."):
                 try:
+                    # Compare unfiltered top-k retrieval against threshold filtering.
                     from evaluation.run_evaluation import evaluate_retrieval
                     from evaluation.evaluation_dataset import evaluation_dataset
                     baseline, b_det = evaluate_retrieval(st.session_state.index, st.session_state.documents, evaluation_dataset, k=3, min_similarity=0.0)
                     filtered, f_det = evaluate_retrieval(st.session_state.index, st.session_state.documents, evaluation_dataset, k=3, min_similarity=0.20)
                     rep = {"baseline": baseline, "filtered": filtered, "baseline_details": b_det, "filtered_details": f_det}
                     with open(eval_report_file, "w", encoding="utf-8") as f:
+                        # Store both aggregate metrics and per-query details for display.
                         json.dump(rep, f, indent=4)
                     st.success("Evaluation completed and report updated!")
                 except Exception as ex:
@@ -406,6 +442,7 @@ with tab_eval:
 
     if eval_report_file.exists():
         try:
+            # Load the most recently saved benchmark so the dashboard survives reruns.
             with open(eval_report_file, "r", encoding="utf-8") as f:
                 report_data = json.load(f)
             b = report_data.get("baseline", {})
@@ -434,7 +471,7 @@ with tab_eval:
             with st.expander("🔍 View Per-Query Evaluation Details"):
                 st.json(report_data.get("filtered_details", []))
 
-            # RAGAS Generation Evaluation Section
+            # RAGAS scores are generated separately and loaded if a report exists.
             st.divider()
             st.markdown("### 🎯 RAGAS Generation & Grounding Evaluation")
             st.caption("Measures factual grounding, hallucination prevention, and semantic correctness via Gemini Judge.")

@@ -27,13 +27,15 @@ from vectorstore.persistence import (
 )
 
 
+# Keep index locations independent of the command's current working directory.
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 INDEX_PATH = str(PROJECT_ROOT / "data" / "index" / "faiss.index")
 METADATA_PATH = str(PROJECT_ROOT / "data" / "index" / "metadata.json")
 
 
 def process_pdf(pdf_path, chunk_size=1000, overlap=200):
-
+    # Build and persist a searchable vector store from one PDF.
+    # Stage 1: extract page text while retaining source and page information.
     print("\nSTEP 1: EXTRACTING PDF")
 
     pages = extract_pdf(pdf_path)
@@ -43,21 +45,22 @@ def process_pdf(pdf_path, chunk_size=1000, overlap=200):
     all_documents = []
     next_chunk_index = 0
 
+    # Process pages separately so every resulting chunk keeps its page number.
     for page in pages:
 
         print("\nProcessing page:", page["page_number"])
 
-        # STEP 2: Clean text
+        # Stage 2: normalize extracted text to remove PDF artifacts/noise.
         cleaned_text = clean_text(page["text"])
 
-        # STEP 3: Create chunks
+        # Stage 3: split long page text into bounded overlapping passages.
         chunks = recursive_chunk_text(
             cleaned_text,
             chunk_size=chunk_size,
             overlap=overlap
         )
 
-        # STEP 4: Attach metadata
+        # Stage 4: associate each passage with a stable ID and source location.
         documents = attach_metadata(
             chunks=chunks,
             source=page["source"],
@@ -67,14 +70,16 @@ def process_pdf(pdf_path, chunk_size=1000, overlap=200):
 
         all_documents.extend(documents)
 
+        # Continue IDs after the last chunk generated on the preceding page.
         next_chunk_index += len(documents)
 
+    # An empty index is not useful and would also break vector-search setup.
     if not all_documents:
         raise ValueError("No usable text chunks were generated")
 
     print("\nTOTAL CHUNKS:", len(all_documents))
 
-    # STEP 5: Generate embeddings
+    # Stage 5: map each chunk's meaning to a dense numerical vector.
     print("\nSTEP 5: GENERATING EMBEDDINGS")
 
     chunk_texts = [
@@ -86,14 +91,14 @@ def process_pdf(pdf_path, chunk_size=1000, overlap=200):
 
     print("Embedding shape:", embeddings.shape)
 
-    # STEP 6: Create FAISS index
+    # Stage 6: normalize vectors and add them to the in-memory FAISS index.
     print("\nSTEP 6: CREATING FAISS INDEX")
 
     index = create_faiss_index(embeddings)
 
     print("Total indexed vectors:", index.ntotal)
 
-    # STEP 7: Save index and metadata
+    # Stage 7: persist vectors and their parallel metadata records together.
     print("\nSTEP 7: SAVING VECTOR STORE")
 
     save_vectorstore(
@@ -107,9 +112,10 @@ def process_pdf(pdf_path, chunk_size=1000, overlap=200):
 
 
 def load_knowledge_base():
-
+    # Load the persisted FAISS index and its aligned document metadata.
     print("\nLOADING SAVED KNOWLEDGE BASE")
 
+    # Persistence validates that the vector count equals the metadata count.
     index, documents = load_vectorstore(
         index_path=INDEX_PATH,
         metadata_path=METADATA_PATH
@@ -131,8 +137,10 @@ def search_context(
     source_filter=None,
     page_filter=None
 ):
+    # Encode the question with the same model used for document chunks.
     query_embedding = generate_embedding(question)
 
+    # Search FAISS and map matching vector positions back to document metadata.
     results = retrieve_documents(
         index=index,
         query_embedding=query_embedding,
@@ -143,6 +151,7 @@ def search_context(
         page_filter=page_filter
     )
 
+    # Print the evidence for command-line runs and debugging; return it for the UI.
     print("\nSEARCH QUESTION:", question)
     print("\nRETRIEVED RESULTS")
 
@@ -172,11 +181,12 @@ def generate_rag_answer(
     source_filter=None,
     page_filter=None
 ):
-
+    # Retrieve supporting chunks and generate a conversational grounded answer.
+    # Normalize absent history to an empty list for the rewriter and prompt builder.
     if chat_history is None:
         chat_history = []
 
-    # STEP 1: Rewrite the follow-up question
+    # Stage 1: resolve follow-up references before embedding/searching the query.
     standalone_question = rewrite_question(
         question=question,
         chat_history=chat_history
@@ -185,7 +195,7 @@ def generate_rag_answer(
     print("\nORIGINAL QUESTION:", question)
     print("REWRITTEN QUESTION:", standalone_question)
 
-    # STEP 2: Retrieve using the standalone question
+    # Stage 2: find the most similar chunks, respecting optional source/page filters.
     retrieved_documents = search_context(
         index=index,
         documents=documents,
@@ -196,7 +206,7 @@ def generate_rag_answer(
         page_filter=page_filter
     )
 
-    # STEP 3: Handle missing context
+    # Stage 3: do not call the LLM when retrieval found no acceptable evidence.
     if not retrieved_documents:
 
         answer = (
@@ -207,16 +217,17 @@ def generate_rag_answer(
 
     else:
 
-        # STEP 4: Build context-aware prompt
+        # Stage 4: include retrieved evidence and history in a constrained prompt.
         prompt = build_rag_prompt(
             question=question,
             retrieved_documents=retrieved_documents,
             chat_history=chat_history
         )
 
-        # STEP 5: Generate answer
+        # Stage 5: ask Gemini to formulate the response from that prompt.
         answer = generate_response(prompt)
 
+    # Return the original wording, rewritten search query, answer, and citations.
     return {
         "question": question,
         "standalone_question": standalone_question,
@@ -231,7 +242,8 @@ def generate_cross_document_answer(
     min_similarity=0.20
 ):
     """Answer a question using relevant chunks across all PDFs."""
-
+    # Retrieve evidence across PDFs and synthesize it into one answer.
+    # Search across all sources so the synthesis can combine document evidence.
     retrieved_documents = search_context(
         index=index,
         documents=documents,
@@ -240,6 +252,7 @@ def generate_cross_document_answer(
         min_similarity=min_similarity
     )
 
+    # Return an explicit no-evidence response instead of sending empty context.
     if not retrieved_documents:
         return {
             "question": question,
@@ -247,6 +260,7 @@ def generate_cross_document_answer(
             "sources": []
         }
 
+    # The LLM helper formats citations and asks for cross-source synthesis.
     answer = answer_across_documents(
         question,
         retrieved_documents
@@ -267,7 +281,8 @@ def detect_knowledge_gap(
     minimum_chunks=2
 ):
     """Check whether the knowledge base contains supporting evidence."""
-
+    # Check whether the knowledge base contains supporting evidence.
+    # Gather likely evidence; the count is a simple coverage signal, not proof.
     retrieved_documents = search_context(
         index=index,
         documents=documents,
@@ -276,11 +291,13 @@ def detect_knowledge_gap(
         min_similarity=min_similarity
     )
 
+    # List distinct PDFs that contributed at least one retrieved passage.
     unique_sources = sorted({
         document["source"]
         for document in retrieved_documents
     })
 
+    # Separate no evidence, limited evidence, and a larger evidence set for UI use.
     if not retrieved_documents:
         status = "No supporting evidence found"
         explanation = (
@@ -302,6 +319,7 @@ def detect_knowledge_gap(
             "that every aspect of the question is covered."
         )
 
+    # Include the passages themselves so callers can inspect the basis for status.
     return {
         "question": question,
         "status": status,
@@ -321,7 +339,8 @@ def generate_document_comparison(
     min_similarity=0.20
 ):
     """Compare relevant information from two PDF documents."""
-
+    # Compare relevant information from two PDF documents.
+    # Validate both requested sources before spending time on retrieval.
     available_sources = {
         document["source"].lower()
         for document in documents
@@ -336,6 +355,8 @@ def generate_document_comparison(
     if source_a.lower() == source_b.lower():
         raise ValueError("Choose two different documents.")
 
+    # Retrieve each side independently so matches from one PDF cannot crowd out
+    # matches from the other PDF in the global top-k results.
     results_a = search_context(
         index=index,
         documents=documents,
@@ -354,6 +375,8 @@ def generate_document_comparison(
         source_filter=source_b
     )
 
+    # Ask the comparison prompt to describe similarities and differences grounded
+    # in the separately retrieved contexts.
     comparison = compare_documents(
         question=question,
         documents_a=results_a,
@@ -379,7 +402,8 @@ def generate_related_concepts(
     min_similarity=0.20
 ):
     """Discover related concepts from uploaded documents."""
-
+    # Discover related concepts from uploaded documents.
+    # Retrieve evidence first; concept generation is grounded in these passages.
     retrieved_documents = search_context(
         index=index,
         documents=documents,
@@ -388,6 +412,7 @@ def generate_related_concepts(
         min_similarity=min_similarity
     )
 
+    # Avoid an LLM request when the knowledge base offers no matching context.
     if not retrieved_documents:
         return {
             "question": question,
@@ -395,6 +420,7 @@ def generate_related_concepts(
             "sources": []
         }
 
+    # Format and analyze the retrieved passages with the discovery-specific prompt.
     concepts = discover_related_concepts(
         question,
         retrieved_documents
@@ -405,4 +431,3 @@ def generate_related_concepts(
         "concepts": concepts,
         "sources": retrieved_documents
     }
-

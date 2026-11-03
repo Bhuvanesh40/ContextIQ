@@ -6,14 +6,16 @@ def format_chat_history(chat_history, max_messages=6):
     """
     Convert recent conversation messages into readable text.
     """
-
+    # No history means there is no prior reference to resolve.
     if not chat_history:
         return "No previous conversation."
 
+    # Bound history to keep rewrite prompts small and focused on recent turns.
     recent_messages = chat_history[-max_messages:]
 
     formatted_history = []
 
+    # Convert structured message records to a format the language model can read.
     for message in recent_messages:
         role = message["role"].upper()
         content = message["content"]
@@ -31,9 +33,11 @@ def rewrite_question(question, chat_history):
     using previous conversation context.
     """
 
+    # Standalone questions need no model call and can be used as-is.
     if not chat_history:
         return question
 
+    # Include the recent turns so pronouns and short follow-ups have context.
     history = format_chat_history(chat_history)
 
     prompt = f"""
@@ -59,8 +63,10 @@ RULES:
 STANDALONE QUESTION:
 """
 
+    # Ask the model only to rewrite the query; the RAG pipeline answers later.
     rewritten_question = generate_response(prompt).strip()
 
+    # Keep the original question if the model unexpectedly returns no text.
     if not rewritten_question:
         return question
 

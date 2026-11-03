@@ -29,10 +29,13 @@ from ragas.embeddings import LangchainEmbeddingsWrapper
 
 def get_evaluator_models():
     """Initialize Gemini LLM and SentenceTransformer embedding evaluator models."""
+    # Initialize Gemini LLM and SentenceTransformer embedding evaluator models.
+    # RAGAS needs a judge LLM and an embedding model for its semantic metrics.
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise ValueError("GEMINI_API_KEY is required for RAGAS evaluation.")
 
+    # Use deterministic generation so repeated evaluations are less variable.
     llm = ChatGoogleGenerativeAI(
         model=os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite"),
         api_key=api_key,
@@ -40,6 +43,7 @@ def get_evaluator_models():
     )
     ragas_llm = LangchainLLMWrapper(llm)
 
+    # Match the embedding family used by ContextIQ for semantic evaluation.
     emb = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
     ragas_emb = LangchainEmbeddingsWrapper(emb)
 
@@ -51,6 +55,7 @@ def build_evaluation_records(index, documents, dataset, top_k=3, min_similarity=
     Execute ContextIQ RAG pipeline for all evaluation queries and format
     into the RAGAS dataset schema (supporting both standard and v0.4+ column names).
     """
+    # Import lazily to avoid coupling evaluation module initialization to pipeline imports.
     from rag_pipeline import generate_rag_answer
 
     questions = []
@@ -62,6 +67,7 @@ def build_evaluation_records(index, documents, dataset, top_k=3, min_similarity=
     print("RUNNING CONTEXTIQ INFERENCE ON EVALUATION QUERIES")
     print("=" * 60)
 
+    # Generate production answers for each query, retaining retrieved contexts.
     for idx, item in enumerate(dataset, start=1):
         q = item["question"]
         gt = item.get("ground_truth", "")
@@ -75,6 +81,7 @@ def build_evaluation_records(index, documents, dataset, top_k=3, min_similarity=
             min_similarity=min_similarity
         )
 
+        # RAGAS expects context as a list of strings for each question.
         retrieved_texts = [
             src["chunk_text"] for src in res.get("sources", [])
         ]
@@ -86,6 +93,7 @@ def build_evaluation_records(index, documents, dataset, top_k=3, min_similarity=
         answers.append(res.get("answer", ""))
         ground_truths.append(gt)
 
+    # Supply both legacy and current column names to support multiple RAGAS versions.
     return {
         "user_input": questions,
         "question": questions,
@@ -103,8 +111,10 @@ def evaluate_ragas(index, documents, dataset, top_k=3, min_similarity=0.20):
     Run complete RAGAS generation and retrieval evaluation.
     Returns average metrics dictionary and detailed records.
     """
+    # Initialize judge dependencies once for the complete evaluation run.
     ragas_llm, ragas_emb = get_evaluator_models()
 
+    # Convert application inputs into the question/context/answer schema.
     eval_data = build_evaluation_records(
         index=index,
         documents=documents,
@@ -113,6 +123,7 @@ def evaluate_ragas(index, documents, dataset, top_k=3, min_similarity=0.20):
         min_similarity=min_similarity
     )
 
+    # RAGAS consumes a Hugging Face Dataset rather than the app's Python records.
     hf_dataset = Dataset.from_dict(eval_data)
 
     print("\n" + "=" * 60)
@@ -120,6 +131,7 @@ def evaluate_ragas(index, documents, dataset, top_k=3, min_similarity=0.20):
     print("=" * 60)
     print("Evaluating: Faithfulness, Answer Relevance, Context Precision, Context Recall, Answer Correctness...")
 
+    # Select both generation-quality and retrieved-context quality measures.
     metrics = [
         faithfulness,
         answer_relevancy,
@@ -128,6 +140,7 @@ def evaluate_ragas(index, documents, dataset, top_k=3, min_similarity=0.20):
         answer_correctness
     ]
 
+    # Run the judge model over every record and selected metric.
     results = evaluate(
         dataset=hf_dataset,
         metrics=metrics,
@@ -139,6 +152,7 @@ def evaluate_ragas(index, documents, dataset, top_k=3, min_similarity=0.20):
 
 
 def main():
+    # Load the knowledge base, run RAGAS, and persist summary plus query records.
     from rag_pipeline import load_knowledge_base
     from evaluation.evaluation_dataset import evaluation_dataset
 
@@ -157,6 +171,7 @@ def main():
     print("CONTEXTIQ RAGAS GENERATION EVALUATION REPORT")
     print("=" * 60)
 
+    # RAGAS versions may return either a dataframe-like object or a score mapping.
     summary = {}
     # Extract results as dict or dataframe
     if hasattr(results, "to_pandas"):
@@ -171,7 +186,7 @@ def main():
             summary[metric_name] = round(float(score), 4) if score is not None else 0.0
             print(f"  {metric_name}: {summary[metric_name]:.4f}")
 
-    # Export report to disk
+    # Preserve per-question outputs alongside aggregate scores for auditing.
     output_path = PROJECT_ROOT / "data" / "index" / "ragas_report.json"
     output_path.parent.mkdir(parents=True, exist_ok=True)
 

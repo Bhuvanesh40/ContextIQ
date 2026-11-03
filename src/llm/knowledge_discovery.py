@@ -3,8 +3,10 @@ from llm.gemini_client import generate_response
 
 def format_context(documents):
     """Format retrieved chunks with their source information."""
+    # Add explicit citations and similarity data so prompts retain provenance.
     context_parts = []
 
+    # Number each passage to make references within the prompt easier to follow.
     for index, document in enumerate(documents, start=1):
         context_parts.append(
             f"""
@@ -23,9 +25,11 @@ Content:
 
 def answer_across_documents(question, documents):
     """Generate a grounded answer using multiple retrieved documents."""
+    # Do not request generation when search found no evidence to ground an answer.
     if not documents:
         return "I couldn't find relevant information in your uploaded documents."
 
+    # Convert metadata records into cited text for the model prompt.
     context = format_context(documents)
 
     prompt = f"""
@@ -50,18 +54,21 @@ INSTRUCTIONS:
 
 ANSWER:
 """
+    # The prompt requires source-based answers and explicit citations.
     return generate_response(prompt)
 
 
 def compare_documents(question, documents_a, documents_b, source_a, source_b):
     """Compare information retrieved from two selected documents."""
 
+    # Require evidence from both sides; a one-sided comparison would be misleading.
     if not documents_a:
         return f"No relevant information was found in {source_a}."
 
     if not documents_b:
         return f"No relevant information was found in {source_b}."
 
+    # Format each source separately to preserve which evidence belongs to which PDF.
     context_a = format_context(documents_a)
     context_b = format_context(documents_b)
 
@@ -91,15 +98,18 @@ INSTRUCTIONS:
 
 COMPARISON:
 """
+    # Ask Gemini to organize common points, differences, and unique details.
     return generate_response(prompt)
 
 
 def discover_related_concepts(question, documents):
     """Identify concepts related to the question from retrieved context."""
 
+    # Return a clear result without calling Gemini when there is no supporting context.
     if not documents:
         return "No relevant concepts could be discovered from the uploaded documents."
 
+    # Supply only retrieved evidence so related concepts remain document-grounded.
     context = format_context(documents)
 
     prompt = f"""
@@ -131,4 +141,5 @@ Use this format:
 
 RELATED CONCEPTS:
 """
+    # The prompt asks for simple explanations and citations for each concept.
     return generate_response(prompt)

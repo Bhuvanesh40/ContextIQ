@@ -22,9 +22,10 @@ from evaluation.retrieval_evaluator import (
     hit_rate_at_k
 )
 
-
+# Run the same retrieval task against several chunk boundary choices.
 PDF_DIRECTORY = Path("data/uploads")
 
+# (maximum characters, repeated characters from the preceding chunk)
 CONFIGURATIONS = [
     (300, 50),
     (500, 50),
@@ -34,14 +35,17 @@ CONFIGURATIONS = [
 
 
 def build_temporary_index(chunk_size, overlap):
-
+    # Create an in-memory index using the selected chunk settings.
+    # Collect metadata in the same order as embeddings are later added to FAISS.
     all_documents = []
 
+    # Sort file names to make chunk IDs and experiment results reproducible.
     pdf_files = sorted(PDF_DIRECTORY.glob("*.pdf"))
 
     if not pdf_files:
         raise ValueError("No PDF files found in data/uploads")
 
+    # Reuse production extraction, cleaning, chunking, and metadata helpers.
     for pdf_path in pdf_files:
 
         pages = extract_pdf(pdf_path)
@@ -56,7 +60,7 @@ def build_temporary_index(chunk_size, overlap):
                 overlap=overlap
             )
 
-            # Use unique IDs for each temporary index
+            # Start after existing temporary records to avoid duplicate IDs.
             start_index = len(all_documents)
 
             page_documents = attach_metadata(
@@ -71,6 +75,7 @@ def build_temporary_index(chunk_size, overlap):
     if not all_documents:
         raise ValueError("No chunks were generated")
 
+    # Embed every generated chunk and build an index for this configuration.
     texts = [
         document["chunk_text"]
         for document in all_documents
@@ -84,7 +89,7 @@ def build_temporary_index(chunk_size, overlap):
 
 
 def evaluate_configuration(index, documents):
-
+    # Measure retrieval quality for all labeled questions on one temporary index.
     scores = {
         "precision": [],
         "recall": [],
@@ -92,6 +97,7 @@ def evaluate_configuration(index, documents):
         "hit_rate": []
     }
 
+    # Query embeddings and metric inputs are regenerated for this index.
     for item in evaluation_dataset:
 
         from embeddings.embedding_model import generate_embedding
@@ -106,6 +112,7 @@ def evaluate_configuration(index, documents):
             min_similarity=0.0
         )
 
+        # Compare retrieved metadata IDs with the dataset's relevant IDs.
         retrieved_ids = [
             document["chunk_id"]
             for document in results
@@ -129,6 +136,7 @@ def evaluate_configuration(index, documents):
             hit_rate_at_k(retrieved_ids, relevant_ids, 3)
         )
 
+    # The main entry point rejects an empty dataset before calling this function.
     count = len(evaluation_dataset)
 
     return {
@@ -138,10 +146,11 @@ def evaluate_configuration(index, documents):
 
 
 def main():
-
+    # Evaluate every chunk configuration and write a JSON comparison report.
     if not evaluation_dataset:
         raise ValueError("Evaluation dataset is empty")
 
+    # Keep one record per setting so chunk count and retrieval scores are comparable.
     experiment_results = []
 
     for chunk_size, overlap in CONFIGURATIONS:
@@ -172,6 +181,7 @@ def main():
         print("MRR:", round(scores["mrr"], 4))
         print("Hit Rate:", round(scores["hit_rate"], 4))
 
+    # Store output in the shared index directory alongside other evaluation reports.
     output_path = Path(
         "data/index/chunking_experiment_report.json"
     )

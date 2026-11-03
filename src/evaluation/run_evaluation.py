@@ -18,8 +18,10 @@ from evaluation.retrieval_evaluator import (
 
 
 def evaluate_retrieval(index, documents, dataset, k=3, min_similarity=0.0):
+    # Score retrieval for each labeled query and return means plus details.
     all_results = []
 
+    # Each dataset item supplies one question and its ground-truth chunk IDs.
     for item in dataset:
         question = item["question"]
         relevant_ids = set(item["relevant_chunk_ids"])
@@ -27,6 +29,7 @@ def evaluate_retrieval(index, documents, dataset, k=3, min_similarity=0.0):
         print("\n" + "=" * 60)
         print("QUESTION:", question)
 
+        # Reuse the production retrieval path so evaluation reflects real behavior.
         results = search_context(
             index=index,
             documents=documents,
@@ -35,6 +38,7 @@ def evaluate_retrieval(index, documents, dataset, k=3, min_similarity=0.0):
             min_similarity=min_similarity
         )
 
+        # Metrics compare stable chunk IDs rather than chunk text.
         retrieved_ids = [
             document["chunk_id"]
             for document in results
@@ -63,6 +67,7 @@ def evaluate_retrieval(index, documents, dataset, k=3, min_similarity=0.0):
         print(f"Hit Rate@{k}:  {hit_rate:.4f}")
         print(f"NDCG@{k}:      {ndcg:.4f}")
 
+    # Avoid dividing by zero if callers pass an empty evaluation dataset.
     count = len(all_results)
     if count == 0:
         raise ValueError("Evaluation dataset is empty")
@@ -82,10 +87,12 @@ def evaluate_retrieval(index, documents, dataset, k=3, min_similarity=0.0):
 
 
 def main():
+    # Run baseline and thresholded retrieval, then save an evaluation report.
+    # Load the same persisted knowledge base used by the app.
     print("\nLOADING KNOWLEDGE BASE")
     index, documents = load_knowledge_base()
 
-    # Evaluate without threshold filtering (raw Top-K)
+    # Baseline keeps the top-k ranking regardless of score.
     print("\n\nEVALUATION 1: WITHOUT SIMILARITY FILTER")
     baseline, baseline_details = evaluate_retrieval(
         index, documents, evaluation_dataset,
@@ -93,7 +100,7 @@ def main():
         min_similarity=0.0
     )
 
-    # Evaluate with the current similarity threshold
+    # Filtered results use the app's current minimum similarity cutoff.
     print("\n\nEVALUATION 2: WITH SIMILARITY FILTER (threshold=0.20)")
     filtered, filtered_details = evaluate_retrieval(
         index, documents, evaluation_dataset,
@@ -113,7 +120,7 @@ def main():
     for metric, value in filtered.items():
         print(f"  {metric}: {value:.4f}" if isinstance(value, float) else f"  {metric}: {value}")
 
-    # Save evaluation results
+    # Store aggregate and query-level results for later dashboard inspection.
     report = {
         "baseline": baseline,
         "filtered": filtered,

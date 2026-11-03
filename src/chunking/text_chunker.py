@@ -1,6 +1,9 @@
+# Character-based chunking helpers split long text for retrieval.
+
+
 def chunk_text(text, chunk_size=500, overlap=100):
 
-    # Step 1: Validate input
+    # Reject invalid sizes before calculating a step that could be zero/negative.
     if not isinstance(text, str):
         raise TypeError("Text must be a string")
 
@@ -10,7 +13,7 @@ def chunk_text(text, chunk_size=500, overlap=100):
     if overlap < 0 or overlap >= chunk_size:
         raise ValueError("Overlap must be smaller than chunk size")
 
-    # Step 2: Remove leading and trailing spaces
+    # Trim only the outer whitespace; internal text remains available to split.
     text = text.strip()
 
     if not text:
@@ -18,28 +21,29 @@ def chunk_text(text, chunk_size=500, overlap=100):
 
     chunks = []
 
-    # Step 3: Initialize starting position
+    # `start` marks the first character included in the next window.
     start = 0
 
-    # Step 4: Divide text into chunks
+    # Advance by window size minus overlap to retain context at each boundary.
     while start < len(text):
 
         end = start + chunk_size
 
         chunk = text[start:end]
 
-        # Step 5: Store the chunk
+        # Ignore whitespace-only windows so they do not become search documents.
         if chunk.strip():
             chunks.append(chunk.strip())
 
-        # Step 6: Move forward with overlap
+        # The next window begins before this one ended by the requested overlap.
         start += chunk_size - overlap
 
     return chunks
 
 
 def recursive_chunk_text(text, chunk_size=500, overlap=50):
-
+    # Prefer natural text boundaries, then combine pieces into bounded chunks.
+    # Validate settings before attempting recursive splitting.
     if not isinstance(text, str):
         raise TypeError("Text must be a string")
 
@@ -49,15 +53,17 @@ def recursive_chunk_text(text, chunk_size=500, overlap=50):
     if overlap < 0 or overlap >= chunk_size:
         raise ValueError("Overlap must be smaller than chunk size")
 
+    # Remove outer whitespace and return early for input with no usable content.
     text = text.strip()
 
     if not text:
         return []
 
+    # Try paragraph, line, sentence, word, then character boundaries in order.
     separators = ["\n\n", "\n", ". ", " ", ""]
 
     def split_recursively(text, separators):
-
+        # A piece already within the limit can be returned without more splitting.
         if len(text) <= chunk_size:
             return [text]
 
@@ -65,6 +71,7 @@ def recursive_chunk_text(text, chunk_size=500, overlap=50):
             return [text[i:i + chunk_size]
                     for i in range(0, len(text), chunk_size)]
 
+        # If this boundary is absent, try the next less-preferred boundary.
         separator = separators[0]
         remaining_separators = separators[1:]
 
@@ -77,6 +84,7 @@ def recursive_chunk_text(text, chunk_size=500, overlap=50):
         if separator not in text:
             return split_recursively(text, remaining_separators)
 
+        # Split on the selected boundary; it is restored below where appropriate.
         parts = text.split(separator)
 
         chunks = []
@@ -90,6 +98,7 @@ def recursive_chunk_text(text, chunk_size=500, overlap=50):
             if index < len(parts) - 1:
                 part += separator
 
+            # Keep short pieces intact and subdivide oversized ones recursively.
             if len(part) <= chunk_size:
                 chunks.append(part)
             else:
@@ -99,10 +108,10 @@ def recursive_chunk_text(text, chunk_size=500, overlap=50):
 
         return chunks
 
-    # First, split the text using meaningful boundaries
+    # Produce small pieces before packing them into the final size-limited windows.
     pieces = split_recursively(text, separators)
 
-    # Combine smaller pieces without exceeding chunk_size
+    # Combine adjacent pieces until adding another would exceed the size limit.
     chunks = []
     current_chunk = ""
 
@@ -115,10 +124,10 @@ def recursive_chunk_text(text, chunk_size=500, overlap=50):
             if current_chunk.strip():
                 chunks.append(current_chunk.strip())
 
-            # Preserve some context from the previous chunk
+            # Repeat a suffix of the previous chunk to preserve boundary context.
             prefix = current_chunk[-overlap:] if overlap else ""
 
-            # If the prefix leaves insufficient space, omit it
+            # Keep the new piece intact when the overlap would make it too large.
             if len(prefix) + len(piece) > chunk_size:
                 prefix = ""
 
