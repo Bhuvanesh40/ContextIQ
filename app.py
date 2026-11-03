@@ -18,8 +18,6 @@ from rag_pipeline import (
     load_knowledge_base,
     process_pdf,
     generate_rag_answer,
-    generate_cross_document_answer,
-    detect_knowledge_gap,
     generate_document_comparison,
     INDEX_PATH,
     METADATA_PATH
@@ -196,7 +194,7 @@ st.markdown(
 
 tab_chat, tab_discovery, tab_eval = st.tabs([
     "💬 Document Q&A",
-    "🔍 Knowledge Discovery",
+    "📑 Document Comparison",
     "📊 Evaluation Dashboard"
 ])
 
@@ -281,77 +279,35 @@ with tab_chat:
 
 
 # ------------------------------------------
-# TAB 2: Knowledge Discovery
+# TAB 2: Document Comparison
 # ------------------------------------------
 with tab_discovery:
-    # This tab offers collection-wide synthesis, coverage checks, and comparisons.
-    st.subheader("Cross-Document Synthesis & Gap Detection")
-    st.markdown("Leverage advanced multi-document capabilities across your indexed collection.")
+    st.subheader("Document Comparison")
 
-    discovery_mode = st.radio(
-        "Choose Discovery Mode:",
-        ["Cross-Document Synthesis", "Detect Knowledge Gap", "Document Comparison"],
-        horizontal=True
-    )
+    if len(sources_available) < 2:
+        st.warning("Please index at least two different PDF documents to compare them.")
+    else:
+        col_a, col_b = st.columns(2)
+        with col_a:
+            doc_a = st.selectbox("Document A", sources_available, key="doc_a")
+        with col_b:
+            doc_b = st.selectbox("Document B", [s for s in sources_available if s != doc_a], key="doc_b")
 
-    if discovery_mode == "Cross-Document Synthesis":
-        cross_q = st.text_input("Question to synthesize across all PDFs:", placeholder="e.g. Compare the concepts explained across files")
-        if st.button("Synthesize Answer", type="primary"):
-            if not st.session_state.index:
-                st.warning("Please index documents first.")
-            else:
-                with st.spinner("Synthesizing across documents..."):
-                    # Search the complete index, then synthesize the retrieved evidence.
-                    res = generate_cross_document_answer(
+        comp_q = st.text_input("Comparison Topic / Question:", placeholder="e.g. What are the key differences?")
+        if st.button("Compare Documents", type="primary"):
+            with st.spinner("Comparing documents..."):
+                try:
+                    # Retrieval is constrained independently to each chosen PDF.
+                    comp = generate_document_comparison(
                         st.session_state.index,
                         st.session_state.documents,
-                        cross_q
+                        comp_q,
+                        doc_a,
+                        doc_b
                     )
-                    st.markdown(res["answer"])
-
-    elif discovery_mode == "Detect Knowledge Gap":
-        gap_q = st.text_input("Check if knowledge base covers this topic:", placeholder="e.g. Does the document mention fine-tuning?")
-        if st.button("Check Coverage"):
-            if not st.session_state.index:
-                st.warning("Please index documents first.")
-            else:
-                with st.spinner("Analyzing knowledge base coverage..."):
-                    # Report retrieved evidence volume and its originating PDFs.
-                    gap = detect_knowledge_gap(
-                        st.session_state.index,
-                        st.session_state.documents,
-                        gap_q
-                    )
-                    st.info(f"**Status:** {gap['status']}")
-                    st.write(gap["explanation"])
-                    st.write(f"**Retrieved Chunks:** {gap['retrieved_chunk_count']}")
-                    st.write(f"**Relevant Sources:** {', '.join(gap['source_documents'])}")
-
-    elif discovery_mode == "Document Comparison":
-        if len(sources_available) < 2:
-            st.warning("Please index at least two different PDF documents to compare them.")
-        else:
-            col_a, col_b = st.columns(2)
-            with col_a:
-                doc_a = st.selectbox("Document A", sources_available, key="doc_a")
-            with col_b:
-                doc_b = st.selectbox("Document B", [s for s in sources_available if s != doc_a], key="doc_b")
-
-            comp_q = st.text_input("Comparison Topic / Question:", placeholder="e.g. What are the key differences?")
-            if st.button("Compare Documents", type="primary"):
-                with st.spinner("Comparing documents..."):
-                    try:
-                        # Retrieval is constrained independently to each chosen PDF.
-                        comp = generate_document_comparison(
-                            st.session_state.index,
-                            st.session_state.documents,
-                            comp_q,
-                            doc_a,
-                            doc_b
-                        )
-                        st.markdown(comp["comparison"])
-                    except Exception as ex:
-                        st.error(str(ex))
+                    st.markdown(comp["comparison"])
+                except Exception as ex:
+                    st.error(str(ex))
 
 
 # ------------------------------------------
